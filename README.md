@@ -8,7 +8,7 @@
 
 ### 食用建议
 
-为了获得最佳的使用体验，我们强烈建议您在 **Windows 操作系统** 上直接安装 YOUChat Proxy。通过调用浏览器的方式，可以有效地绕过 Cloudflare 的 JS Challenge。
+为了获得最佳的使用体验，我们强烈建议您在 Windows 操作系统 上直接安装 YOUChat Proxy。通过调用浏览器的方式，可以有效地绕过 Cloudflare 的 JS Challenge。
 
 由于 Debian 系统比 Windows 系统占用更少的系统资源，因此该安装方案特别适用于 VPS **资源受限**（内存及 CPU 资源较少）的环境。
 
