@@ -1,70 +1,115 @@
 #!/bin/bash
 
-# 检查是否已存在screen会话并关闭
-if screen -ls | grep -q "youchat_proxy"; then
-    echo "检测到已存在的youchat_proxy会话，正在关闭..."
-    screen -S youchat_proxy -X quit
-    sleep 2
-fi
+log() {
+    echo "[$(date +'%Y-%m-%d %H:%M:%S')] $1"
+}
 
-# 检查是否以root权限运行
-if [ "$EUID" -ne 0 ]; then 
-    echo "请以root权限运行此脚本"
+handle_error() {
+    log "错误: $1"
     exit 1
-fi
+}
 
-# 设置错误时退出
-set -e
-
-# 检查是否已安装必要组件
-if ! command -v git &> /dev/null || ! command -v node &> /dev/null || ! command -v google-chrome &> /dev/null; then
-    echo "检测到缺少必要组件，开始安装..."
-    # 更新系统并安装基础包
-    apt update
-    apt install -y wget curl sudo git python3 xvfb screen
-
-    # 下载并安装Chrome
-    echo "正在下载并安装Chrome..."
-    wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
-    apt install -y ./google-chrome-stable_current_amd64.deb
-    rm google-chrome-stable_current_amd64.deb
-
-    # 安装Node.js
-    echo "正在安装Node.js环境..."
-    apt install -y nodejs npm
-    npm config set registry https://registry.npmmirror.com
-    npm install -g n
-    apt remove -y nodejs npm
-    apt autoremove -y
-    n latest
-fi
-
-# 检查YOUChat_Proxy目录是否存在
-if [ ! -d "YOUChat_Proxy" ]; then
-    echo "正在克隆YOUChat_Proxy..."
-    git clone https://github.com/YIWANG-sketch/YOUChat_Proxy.git
-    cd YOUChat_Proxy/
+check_dependencies() {
+    local deps=("git" "node" "google-chrome")
+    local missing_deps=()
     
-    # 重命名配置文件
-    echo "正在初始化配置文件..."
-    mv config.example.mjs config.mjs
+    for dep in "${deps[@]}"; do
+        if ! command -v "$dep" &> /dev/null; then
+            missing_deps+=("$dep")
+        fi
+    done
     
-    # 修改start.sh中的设置
-    echo "修改配置设置..."
-    sed -i 's/export USE_MANUAL_LOGIN=true/export USE_MANUAL_LOGIN=false/' start.sh
-    sed -i 's/export UPLOAD_FILE_FORMAT=docx/export UPLOAD_FILE_FORMAT=txt/' start.sh
-else
-    cd YOUChat_Proxy/
-fi
+    if [ ${#missing_deps[@]} -ne 0 ]; then
+        log "检测到缺少以下组件: ${missing_deps[*]}"
+        return 1
+    fi
+    return 0
+}
 
-# 创建新的screen会话并启动服务
-echo "正在启动服务..."
-screen -dmS youchat_proxy bash start.sh
+install_dependencies() {
+    log "开始安装必要组件..."
+    
+    local log_file="/tmp/install_$(date +%s).log"
+    
+    {
+        apt update
+        apt install -y wget curl sudo git python3 xvfb screen
+        
+        if ! command -v google-chrome &> /dev/null; then
+            wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
+            apt install -y ./google-chrome-stable_current_amd64.deb || handle_error "Chrome安装失败"
+            rm google-chrome-stable_current_amd64.deb
+        fi
+        
+        if ! command -v node &> /dev/null; then
+            curl -fsSL https://deb.nodesource.com/setup_lts.x | bash -
+            apt install -y nodejs || handle_error "Node.js安装失败"
+            npm config set registry https://registry.npmmirror.com
+        fi
+    } >> "$log_file" 2>&1 || handle_error "安装过程失败，详情请查看 $log_file"
+}
 
-# 清空屏幕
-clear
+setup_config() {
+    log "配置YOUChat_Proxy..."
+    
+    if [ ! -f "config.mjs" ]; then
+        if [ ! -f "config.example.mjs" ]; then
+            handle_error "未找到配置文件模板"
+        fi
+        cp config.example.mjs config.mjs
+    fi
+    
+    if ! grep -q "COOKIE=" config.mjs; then
+        log "警告: 配置文件中未设置Cookie"
+    fi
+	
+	sed -i 's/export USE_MANUAL_LOGIN=true/export USE_MANUAL_LOGIN=false/' start.sh
+}
 
-echo "使用 'screen -r youchat_proxy' 命令查看运行状态"
-echo "只支持Cookie登录 请在YOUChat_Proxy/config.mjs中填入自己的Cookie"
-echo "其它设置请在YOUChat_Proxy/start.sh中修改"
-echo "确保config.mjs和start.sh都修改为自己的配置后再次运行本脚本"
+manage_screen_session() {
+    local session_name="youchat_proxy"
+    
+    if screen -ls | grep -q "$session_name"; then
+        log "正在关闭已存在的$session_name会话..."
+        screen -S "$session_name" -X quit
+        sleep 2
+    fi
+    
+    log "启动新的screen会话..."
+    screen -dmS "$session_name" bash start.sh || handle_error "启动screen会话失败"
+}
+
+main() {
+    if [ "$EUID" -ne 0 ]; then 
+        handle_error "请以root权限运行此脚本"
+    fi
+    
+    set -e
+    
+    if ! check_dependencies; then
+        install_dependencies
+    fi
+    
+    if [ ! -d "YOUChat_Proxy" ]; then
+        log "克隆YOUChat_Proxy仓库..."
+        git clone https://github.com/YIWANG-sketch/YOUChat_Proxy.git || handle_error "克隆仓库失败"
+        cd YOUChat_Proxy/
+        setup_config
+    else
+        cd YOUChat_Proxy/
+    fi
+    
+    manage_screen_session
+    
+    clear
+    log "运行环境安装完成！"
+    echo "
+使用说明：
+1. 使用 'screen -r youchat_proxy' 查看运行状态
+2. 请在 YOUChat_Proxy/config.mjs 中填入Cookie
+3. 其它设置请在 YOUChat_Proxy/start.sh 中修改
+4. 首次运行安装完成后重新运行此脚本启动程序
+"
+}
+
+main
