@@ -27,7 +27,7 @@ check_dependencies() {
 }
 
 install_dependencies() {
-    log "开始安装必要组件..."
+    log "正在安装必要组件..."
     
     local log_file="/tmp/install_$(date +%s).log"
     
