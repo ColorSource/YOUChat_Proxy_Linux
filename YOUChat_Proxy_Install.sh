@@ -1,5 +1,4 @@
 #!/bin/bash
-
 # --- Configuration ---
 REPO_URL="https://github.com/YIWANG-sketch/YOUChat_Proxy.git"
 REPO_NAME="YOUChat_Proxy"
@@ -15,7 +14,6 @@ YELLOW='\033[0;33m'
 NC='\033[0m' # No Color
 
 # --- Functions ---
-
 # Logging function with color support
 log() {
     local color="$1"
@@ -35,15 +33,21 @@ handle_error() {
 
 # Check for required dependencies
 check_dependencies() {
-    local deps=("git" "node" "google-chrome" "wget" "curl" "sudo" "python3" "xvfb" "screen")
+    local deps=("git" "node" "google-chrome" "wget" "curl" "sudo" "python3" "screen")
     local missing_deps=()
-
+    
+    # 特别检查 xvfb
+    if ! dpkg -l | grep -q "xvfb"; then
+        missing_deps+=("xvfb")
+    fi
+    
+    # 检查其他依赖
     for dep in "${deps[@]}"; do
         if ! command -v "$dep" &> /dev/null; then
             missing_deps+=("$dep")
         fi
     done
-
+    
     if [ ${#missing_deps[@]} -ne 0 ]; then
         log "$YELLOW" "检测到缺少以下组件: ${missing_deps[*]}"
         return 1
@@ -55,17 +59,14 @@ check_dependencies() {
 # Install necessary dependencies using apt
 install_dependencies() {
     log "正在安装必要组件..."
-
     {
         apt update
-        apt install -y git wget curl sudo python3 xvfb screen
-
+        apt install -y git wget curl sudo python3 xvfb xauth x11-xkb-utils screen
         if ! command -v google-chrome &> /dev/null; then
             wget -q https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb -O /tmp/google-chrome-stable_current_amd64.deb
             apt install -y /tmp/google-chrome-stable_current_amd64.deb || handle_error "Chrome安装失败"
             rm /tmp/google-chrome-stable_current_amd64.deb
         fi
-
         if ! command -v node &> /dev/null; then
             curl -fsSL https://deb.nodesource.com/setup_lts.x | bash -
             apt install -y nodejs || handle_error "Node.js安装失败"
@@ -78,7 +79,6 @@ install_dependencies() {
 # Set up the configuration file
 setup_config() {
     log "配置 $REPO_NAME..."
-
     if [ ! -f "$CONFIG_FILE" ]; then
         if [ ! -f "$CONFIG_EXAMPLE_FILE" ]; then
             handle_error "未找到配置文件模板"
@@ -88,11 +88,9 @@ setup_config() {
     else
         log "$YELLOW" "配置文件已存在: $CONFIG_FILE"
     fi
-
     if ! grep -q "COOKIE=" "$CONFIG_FILE"; then
         log "$YELLOW" "警告: 配置文件中未设置Cookie"
     fi
-
     sed -i 's/export USE_MANUAL_LOGIN=true/export USE_MANUAL_LOGIN=false/' start.sh
     log "$GREEN" "已禁用手动登录模式."
 }
@@ -104,7 +102,6 @@ manage_screen_session() {
         screen -S "$SESSION_NAME" -X quit
         sleep 2
     fi
-
     log "启动新的screen会话..."
     screen -dmS "$SESSION_NAME" bash start.sh || handle_error "启动screen会话失败"
     log "$GREEN" "已在后台启动 $SESSION_NAME 会话."
@@ -138,10 +135,10 @@ main() {
         # log "正在更新 $REPO_NAME 仓库..."
         # git pull origin master
     fi
-    
+
     # Check if inside YOUChat_Proxy directory
     if [ "$(basename "$PWD")" != "$REPO_NAME" ]; then
-      handle_error "当前目录不是 $REPO_NAME, 请进入 $REPO_NAME 目录后重新运行"
+        handle_error "当前目录不是 $REPO_NAME, 请进入 $REPO_NAME 目录后重新运行"
     fi
 
     # Manage screen session only if not already running
